@@ -382,7 +382,7 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
     assert RedirectResponse(u_mixed).headers["location"] == "/%5C%2Fevil.example/x"
     assert unquote(u_mixed.path) == "/\\/evil.example/x"
 
-    # Edge cases: empty path, single separator, and isolated separators
+    # Edge cases: empty path, single separator, isolated separators, and single backslash with text
     for boundary_path, expected_encoded in [
         ("", ""),
         ("/", "/"),
@@ -391,6 +391,8 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
         ("/\\", "/%5C"),
         ("\\\\", "\\%5C"),
         ("\\/", "\\%2F"),
+        ("\\foo", "\\foo"),
+        ("\\/\\evil.example/x", "\\%2F%5Cevil.example/x"),
     ]:
         u_boundary = URL(
             scope={
@@ -405,8 +407,7 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
         assert u_boundary.netloc == ""
         assert u_boundary.hostname is None
         assert u_boundary.path == expected_encoded
-        if len(boundary_path) - len(boundary_path.lstrip("/\\")) > 1:
-            assert unquote(u_boundary.path) == boundary_path
+        assert unquote(u_boundary.path) == boundary_path
 
 
 def test_headers() -> None:
