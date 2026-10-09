@@ -61,7 +61,8 @@ class URL:
             else:
                 leading_slashes = len(path) - len(path.lstrip("/\\"))
                 if leading_slashes > 1:
-                    path = "/" + "%2F" * (leading_slashes - 1) + path[leading_slashes:]
+                    encoded_slashes = "".join("%5C" if c == "\\" else "%2F" for c in path[1:leading_slashes])
+                    path = path[0] + encoded_slashes + path[leading_slashes:]
                 url = f"{path}?{query}" if query else path
         elif components:
             assert not url, 'Cannot set both "url" and "**components".'

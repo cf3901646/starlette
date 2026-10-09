@@ -277,7 +277,11 @@ def test_url_from_scope_with_authority_in_path(path: str, expected_path: str, wi
 
 def test_url_from_scope_no_origin_with_double_slash_path() -> None:
     """When scope has neither Host header nor server, a // path must not bleed into netloc
-    and must be emitted as a same-origin reference rather than an authority."""
+    and must be emitted as a same-origin reference rather than an authority.
+    Leading backslashes and slashes past the first are percent-encoded so that
+    path identity round-trips correctly."""
+    from urllib.parse import unquote
+
     from starlette.responses import RedirectResponse
 
     u = URL(
@@ -296,6 +300,7 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
     assert str(u) == "/%2Fevil.example/x?a=1"
     assert u.query == "a=1"
     assert RedirectResponse(u).headers["location"] == "/%2Fevil.example/x?a=1"
+    assert unquote(u.path) == "//evil.example/x"
 
     u_backslash = URL(
         scope={
@@ -308,8 +313,42 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
         }
     )
     assert u_backslash.netloc == ""
-    assert u_backslash.path == "/%2Fevil.example/x"
-    assert RedirectResponse(u_backslash).headers["location"] == "/%2Fevil.example/x"
+    assert u_backslash.hostname is None
+    assert u_backslash.path == "/%5Cevil.example/x"
+    assert RedirectResponse(u_backslash).headers["location"] == "/%5Cevil.example/x"
+    assert unquote(u_backslash.path) == "/\\evil.example/x"
+
+    u_leading_backslashes = URL(
+        scope={
+            "type": "http",
+            "scheme": "http",
+            "path": "\\\\evil.example/x",
+            "query_string": b"",
+            "headers": [],
+            "server": None,
+        }
+    )
+    assert u_leading_backslashes.netloc == ""
+    assert u_leading_backslashes.hostname is None
+    assert u_leading_backslashes.path == "\\%5Cevil.example/x"
+    assert RedirectResponse(u_leading_backslashes).headers["location"] == "%5C%5Cevil.example/x"
+    assert unquote(u_leading_backslashes.path) == "\\\\evil.example/x"
+
+    u_backslash_slash = URL(
+        scope={
+            "type": "http",
+            "scheme": "http",
+            "path": "\\/evil.example/x",
+            "query_string": b"",
+            "headers": [],
+            "server": None,
+        }
+    )
+    assert u_backslash_slash.netloc == ""
+    assert u_backslash_slash.hostname is None
+    assert u_backslash_slash.path == "\\%2Fevil.example/x"
+    assert RedirectResponse(u_backslash_slash).headers["location"] == "%5C%2Fevil.example/x"
+    assert unquote(u_backslash_slash.path) == "\\/evil.example/x"
 
     u_triple = URL(
         scope={
@@ -322,8 +361,52 @@ def test_url_from_scope_no_origin_with_double_slash_path() -> None:
         }
     )
     assert u_triple.netloc == ""
+    assert u_triple.hostname is None
     assert u_triple.path == "/%2F%2Fevil.example/x"
     assert RedirectResponse(u_triple).headers["location"] == "/%2F%2Fevil.example/x"
+    assert unquote(u_triple.path) == "///evil.example/x"
+
+    u_mixed = URL(
+        scope={
+            "type": "http",
+            "scheme": "http",
+            "path": "/\\/evil.example/x",
+            "query_string": b"",
+            "headers": [],
+            "server": None,
+        }
+    )
+    assert u_mixed.netloc == ""
+    assert u_mixed.hostname is None
+    assert u_mixed.path == "/%5C%2Fevil.example/x"
+    assert RedirectResponse(u_mixed).headers["location"] == "/%5C%2Fevil.example/x"
+    assert unquote(u_mixed.path) == "/\\/evil.example/x"
+
+    # Edge cases: empty path, single separator, and isolated separators
+    for boundary_path, expected_encoded in [
+        ("", ""),
+        ("/", "/"),
+        ("\\", "\\"),
+        ("//", "/%2F"),
+        ("/\\", "/%5C"),
+        ("\\\\", "\\%5C"),
+        ("\\/", "\\%2F"),
+    ]:
+        u_boundary = URL(
+            scope={
+                "type": "http",
+                "scheme": "http",
+                "path": boundary_path,
+                "query_string": b"",
+                "headers": [],
+                "server": None,
+            }
+        )
+        assert u_boundary.netloc == ""
+        assert u_boundary.hostname is None
+        assert u_boundary.path == expected_encoded
+        if len(boundary_path) - len(boundary_path.lstrip("/\\")) > 1:
+            assert unquote(u_boundary.path) == boundary_path
 
 
 def test_headers() -> None:
