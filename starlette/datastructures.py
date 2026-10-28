@@ -119,6 +119,7 @@ class URL:
 
     def replace(self, **kwargs: Any) -> URL:
         if "username" in kwargs or "password" in kwargs or "hostname" in kwargs or "port" in kwargs:
+            has_explicit_port = "port" in kwargs
             hostname = kwargs.pop("hostname", None)
             port = kwargs.pop("port", self.port)
             username = kwargs.pop("username", self.username)
@@ -130,13 +131,28 @@ class URL:
 
                 if hostname and hostname[-1] != "]":
                     hostname = hostname.rsplit(":", 1)[0]
-            elif ":" in hostname and not hostname.startswith("["):
-                try:
-                    ipaddress.IPv6Address(hostname)
-                except ValueError:
-                    pass
-                else:
-                    hostname = f"[{hostname}]"
+            else:
+                embedded_port: int | None = None
+                if hostname.startswith("[") and "]:" in hostname:
+                    host_part = hostname[: hostname.index("]:") + 1]
+                    port_part = hostname[hostname.index("]:") + 2 :]
+                    if port_part.isdigit():
+                        hostname = host_part
+                        embedded_port = int(port_part)
+                elif ":" in hostname and not hostname.startswith("["):
+                    try:
+                        ipaddress.IPv6Address(hostname)
+                    except ValueError:
+                        host_part, _, port_part = hostname.rpartition(":")
+                        if port_part.isdigit():
+                            hostname = host_part
+                            embedded_port = int(port_part)
+                    else:
+                        hostname = f"[{hostname}]"
+
+                if embedded_port is not None:
+                    if not has_explicit_port or port is None:
+                        port = embedded_port
 
             netloc = hostname
             if port is not None:
